@@ -1,6 +1,8 @@
 ﻿# Backup Copy Azure Virtual Machine
 #
-# [Backup Flow]
+# This software is no warranty, the author can not be held responsible for any trouble caused by the use.
+#
+# [Backup Step]
 # 1. Stop Virtual Machine.
 # 2. Copy Virtual Machine OS and Data Disks.
 # 3. Restart Virtual Machine.
@@ -12,27 +14,34 @@
 # See here,
 # http://blog.greatrexpectations.com/2013/04/24/using-blob-snapshots-to-backup-azure-virtual-machines/
 
-
 # Configuration
 # ================================================================
-$subscriptionName = "input here..."
-$cloudServiceName = "input here..."
-$virtualMachineName = "input here..."
+$subscriptionName = "<input here>"
+$cloudServiceName = "<input here>"
+$virtualMachineName = "<input here>"
 $remainigBackupCount = 2
 
 
+function Log($msg)
+{
+    Write-Host "[" (Get-Date) "]" $msg
+}
+
 # Confirm execution
 # ================================================================
+Write-Host "=================================================="
 Write-Host "Subscription Name: $subscriptionName"
 Write-Host "Cloud Service Name: $cloudServiceName"
 Write-Host "Virtual Machine Name: $virtualMachineName"
 Write-Host "Remaining Backup Count: $remainigBackupCount"
+Write-Host "=================================================="
+Write-Host ""
 if((Read-Host "Will you really backup ? :[Y/n]") -ne "Y")
 {
-    Write-Host "[Info ] Stop backup."
+    Write-Host "Backup stopped."
     exit
 }
-
+Write-Host ""
 
 $vm = Get-AzureVM -ServiceName $cloudServiceName -Name $virtualMachineName
 if($vm -eq $null)
@@ -52,9 +61,9 @@ if(($vm.InstanceStatus -eq 'ReadyRole') -and ($vm.PowerState -eq 'Started'))
 {
     $wasRunning = $true
 
-    Write-Host "[Start] Stop-AzureVM:" (Get-Date)
+    Log "Start Stop-AzureVM"
 	$vm | Stop-AzureVM -StayProvisioned | Out-Null
-    Write-Host "[End  ] Stop-AzureVM:" (Get-Date)
+    Log "End   Stop-AzureVM"
 
     # WARN: following code may be not required.
 	# Wait for the machine to shutdown
@@ -77,27 +86,23 @@ if($osDisk -eq $null)
 $storageAccountName = $osDisk.MediaLink.Host.Split('.')[0]
 $blobUrl = $osDisk.MediaLink.Scheme + "://" + $osDisk.MediaLink.Host + "/"
 $containerName = $osDisk.MediaLink.Segments[1].Substring(0, $osDisk.MediaLink.Segments[1].Length - 1)
-# {Container Name}/backup_{Virtual Machine Name}/{yyyyMMdd_HHmmss}/
-$backupDirPath = $containerName + "/" + "backup_" + $virtualMachineName + "/" + (Get-Date -Format yyyyMMdd_HHmmss) + "/"
-$backupDirUrl = $blobUrl + $backupDirPath
-Write-Host "[Info ] Backup Blob Directory:" $backupDirPath
+$backupDirName = "backup_" + $virtualMachineName
+$backupDirUrl = $blobUrl + $containerName + "/" + $backupDirName + "/" + (Get-Date -Format yyyyMMdd_HHmmss) + "/"
 
 $storageContext = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey (Get-AzureStorageKey -StorageAccountName $storageAccountName).Primary
 
 ## Copy OS disk
 $backupOsBlobUrl = $backupDirUrl + $osDisk.MediaLink.Segments[$osDisk.MediaLink.Segments.Length - 1]
-Write-Host "[Start] OS Disk Copy:" $osDisk.MediaLink ":" (Get-Date)
+Log ("Copy OS Disk To: " + $osDisk.MediaLink)
 Start-AzureStorageBlobCopy -SrcBlob $osDisk.MediaLink -SrcContainer $containerName -DestBlob $backupOsBlobUrl -DestContainer $containerName -Context $storageContext | Out-Null
-Write-Host "[End  ] OS Disk Copy:" $osDisk.MediaLink ":" (Get-Date)
 
 ## Copy data disks
 $dataDisks = $vm | Get-AzureDataDisk
 foreach($dataDisk in $dataDisks)
 {
     $backupDataBlobUrl = $backupDirUrl + $dataDisk.MediaLink.Segments[$dataDisk.MediaLink.Segments.Length - 1]
-    Write-Host "[Start] Data Disk Copy:" $dataDisk.MediaLink ":" (Get-Date)
+    Log ("Copy Data Disk To: " + $dataDisk.MediaLink)
     Start-AzureStorageBlobCopy -SrcBlob $dataDisk.MediaLink -SrcContainer $containerName -DestBlob $backupDataBlobUrl -DestContainer $containerName -Context $storageContext | Out-Null
-    Write-Host "[End  ] Data Disk Copy:" $dataDisk.MediaLink ":" (Get-Date)
 }
 
 
@@ -105,19 +110,34 @@ foreach($dataDisk in $dataDisks)
 # ================================================================
 if($wasRunning)
 {
-    Write-Host "[Start] Start-AzureVM:" (Get-Date)
+    Log "Start Start-AzureVM"
 	$vm | Start-AzureVM | Out-Null
-    Write-Host "[End  ] Start-AzureVM:" (Get-Date)
+    Log "End   Start-AzureVM"
 }
 
 # Remove old backup
 # ================================================================
 if ($remainigBackupCount -gt 0)
 {
-    
+    $backupBlobs = Get-AzureStorageBlob -Container $containerName -Context $storageContext -Prefix $backupDirName
+    $dirs = $backupBlobs | foreach { [Regex]::Replace($_.Name, "[^/]+$", "") } | Select-Object -Unique | Sort-Object
+    if ($dirs.Count -gt $remainigBackupCount)
+    {
+        $delDirs = $dirs | select -First ($dirs.Count - $remainigBackupCount)
+        foreach($backupBlob in $backupBlobs)
+        {
+            $dir = [Regex]::Replace($backupBlob.Name, "[^/]+$", "")
+            if ($delDirs -contains $dir)
+            {
+                Log ("Remove Backup: " +  $backupBlob.Name) 
+                $backupBlob | Remove-AzureStorageBlob
+            }
+        }
+    }
 }
 
 
 # End
 # ================================================================
-Write-Host "\n\nProcess complete!"
+Write-Host ""
+Write-Host "Backup complete!"
