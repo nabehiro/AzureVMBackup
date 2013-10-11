@@ -1,5 +1,5 @@
 ﻿# Backup Copy Azure Virtual Machine
-#
+# 
 # This software is no warranty, the author can not be held responsible for any trouble caused by the use.
 #
 # [Backup Step]
@@ -20,7 +20,6 @@ $subscriptionName = "<input here>"
 $cloudServiceName = "<input here>"
 $virtualMachineName = "<input here>"
 $remainigBackupCount = 2
-
 
 function Log($msg)
 {
@@ -91,19 +90,35 @@ $backupDirUrl = $blobUrl + $containerName + "/" + $backupDirName + "/" + (Get-Da
 
 $storageContext = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey (Get-AzureStorageKey -StorageAccountName $storageAccountName).Primary
 
+$copiedBlobs = @()
+
 ## Copy OS disk
 $backupOsBlobUrl = $backupDirUrl + $osDisk.MediaLink.Segments[$osDisk.MediaLink.Segments.Length - 1]
-Log ("Copy OS Disk To: " + $osDisk.MediaLink)
-Start-AzureStorageBlobCopy -SrcBlob $osDisk.MediaLink -SrcContainer $containerName -DestBlob $backupOsBlobUrl -DestContainer $containerName -Context $storageContext | Out-Null
+Log "Copy OS Disk To: $($osDisk.MediaLink)"
+$copiedBlobs += Start-AzureStorageBlobCopy -SrcBlob $osDisk.MediaLink -SrcContainer $containerName -DestBlob $backupOsBlobUrl -DestContainer $containerName -Context $storageContext
 
 ## Copy data disks
 $dataDisks = $vm | Get-AzureDataDisk
 foreach($dataDisk in $dataDisks)
 {
     $backupDataBlobUrl = $backupDirUrl + $dataDisk.MediaLink.Segments[$dataDisk.MediaLink.Segments.Length - 1]
-    Log ("Copy Data Disk To: " + $dataDisk.MediaLink)
-    Start-AzureStorageBlobCopy -SrcBlob $dataDisk.MediaLink -SrcContainer $containerName -DestBlob $backupDataBlobUrl -DestContainer $containerName -Context $storageContext | Out-Null
+    Log "Copy Data Disk To: $($dataDisk.MediaLink)"
+    $copiedBlobs += Start-AzureStorageBlobCopy -SrcBlob $dataDisk.MediaLink -SrcContainer $containerName -DestBlob $backupDataBlobUrl -DestContainer $containerName -Context $storageContext
 }
+
+## Wait copying complete
+do
+{
+    Start-Sleep -Seconds 10
+    $copyDone = $true
+    foreach($copiedBlob in $copiedBlobs)
+    {
+        $state = $copiedBlob | Get-AzureStorageBlobCopyState -Context $storageContext
+        Log "Copy Status($($copiedBlob.Name)): $($state.Status)"
+        $copyDone = $copyDone -and ($state.Status -eq "Success")
+    }
+}
+until ($copyDone)
 
 
 # Restart Virtual Machine
@@ -129,7 +144,7 @@ if ($remainigBackupCount -gt 0)
             $dir = [Regex]::Replace($backupBlob.Name, "[^/]+$", "")
             if ($delDirs -contains $dir)
             {
-                Log ("Remove Backup: " +  $backupBlob.Name) 
+                Log "Remove Backup: $($backupBlob.Name)"
                 $backupBlob | Remove-AzureStorageBlob
             }
         }
