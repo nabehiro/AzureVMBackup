@@ -94,7 +94,7 @@ $copiedBlobs = @()
 
 ## Copy OS disk
 $backupOsBlobUrl = $backupDirUrl + $osDisk.MediaLink.Segments[$osDisk.MediaLink.Segments.Length - 1]
-Log "Copy OS Disk To: $($osDisk.MediaLink)"
+Log "Copy OS Disk To: $($backupOsBlobUrl.MediaLink)"
 $copiedBlobs += Start-AzureStorageBlobCopy -SrcBlob $osDisk.MediaLink -SrcContainer $containerName -DestBlob $backupOsBlobUrl -DestContainer $containerName -Context $storageContext
 
 ## Copy data disks
@@ -102,7 +102,7 @@ $dataDisks = $vm | Get-AzureDataDisk
 foreach($dataDisk in $dataDisks)
 {
     $backupDataBlobUrl = $backupDirUrl + $dataDisk.MediaLink.Segments[$dataDisk.MediaLink.Segments.Length - 1]
-    Log "Copy Data Disk To: $($dataDisk.MediaLink)"
+    Log "Copy Data Disk To: $($backupDataBlobUrl.MediaLink)"
     $copiedBlobs += Start-AzureStorageBlobCopy -SrcBlob $dataDisk.MediaLink -SrcContainer $containerName -DestBlob $backupDataBlobUrl -DestContainer $containerName -Context $storageContext
 }
 
