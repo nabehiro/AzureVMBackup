@@ -63,14 +63,6 @@ if(($vm.InstanceStatus -eq 'ReadyRole') -and ($vm.PowerState -eq 'Started'))
     Log "Start Stop-AzureVM"
 	$vm | Stop-AzureVM -StayProvisioned | Out-Null
     Log "End   Stop-AzureVM"
-
-    # WARN: following code may be not required.
-	# Wait for the machine to shutdown
-	do
-	{
-		Start-Sleep -Seconds 5
-		$vm = Get-AzureVM -ServiceName $cloudServiceName -Name $virtualMachineName
-	} while(($vm.InstanceStatus -eq 'ReadyRole') -and ($vm.PowerState -eq 'Started'))
 }
 
 
@@ -106,7 +98,7 @@ foreach($dataDisk in $dataDisks)
     $copiedBlobs += Start-AzureStorageBlobCopy -SrcBlob $dataDisk.MediaLink -SrcContainer $containerName -DestBlob $backupDataBlobUrl -DestContainer $containerName -Context $storageContext
 }
 
-## Wait copying complete
+## Wait copying complete (this code may be not required...)
 do
 {
     Start-Sleep -Seconds 10
