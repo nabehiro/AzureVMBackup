@@ -20,6 +20,7 @@ $subscriptionName = "<input here>"
 $cloudServiceName = "<input here>"
 $virtualMachineName = "<input here>"
 $remainigBackupCount = 2
+$restartVirtualMachine = $false
 
 function Log($msg)
 {
@@ -56,7 +57,7 @@ set-AzureSubscription $subscriptionName
 
 # Shut down VM
 # ================================================================
-if(($vm.InstanceStatus -eq 'ReadyRole') -and ($vm.PowerState -eq 'Started'))
+if(($restartVirtualMachine -eq $true) -and ($vm.InstanceStatus -eq 'ReadyRole') -and ($vm.PowerState -eq 'Started'))
 {
     $wasRunning = $true
 
